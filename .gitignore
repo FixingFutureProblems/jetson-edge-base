@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtuelle Umgebungen
+.venv/
+venv/
+env/
+
+# IDEs und Editoren
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Lokale Laufzeitdateien
+*.log
+*.pid
