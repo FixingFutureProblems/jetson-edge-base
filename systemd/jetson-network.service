@@ -1,0 +1,18 @@
+[Unit]
+Description=Jetson Edge automatic network selection
+Documentation=file:/usr/local/share/doc/jetson-edge-base/
+Wants=NetworkManager.service NetworkManager-wait-online.service
+After=NetworkManager.service NetworkManager-wait-online.service
+ConditionPathExists=/etc/jetson-edge/network.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jetson-network auto
+RemainAfterExit=yes
+TimeoutStartSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jetson-network
+
+[Install]
+WantedBy=multi-user.target
