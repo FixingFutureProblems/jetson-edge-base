@@ -620,3 +620,160 @@ td {
     border-color: rgba(114, 213, 114, 0.3);
     background: var(--surface-hover);
 }
+
+
+/* ---------------------------------------------------------
+   LPR Operations Dashboard
+   --------------------------------------------------------- */
+
+.lpr-metric-grid {
+    grid-template-columns:
+        repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.lpr-stream-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.lpr-detail-grid {
+    align-items: stretch;
+}
+
+.stream-card {
+    min-width: 0;
+}
+
+.stream-viewport {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 300px;
+    overflow: hidden;
+
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 0.9rem;
+
+    background:
+        radial-gradient(
+            circle at center,
+            rgba(255, 255, 255, 0.04),
+            transparent 65%
+        ),
+        #070b11;
+}
+
+.stream-image {
+    position: relative;
+    z-index: 2;
+
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 72vh;
+
+    object-fit: contain;
+
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.stream-image.is-visible {
+    opacity: 1;
+}
+
+.stream-placeholder {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 2rem;
+
+    color: var(--text-muted, #8c98a8);
+    text-align: center;
+}
+
+.error-message {
+    overflow-wrap: anywhere;
+}
+
+.event-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.event-empty-state {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+
+    min-height: 180px;
+    padding: 1.5rem;
+
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    border-radius: 0.85rem;
+
+    color: var(--text-muted, #8c98a8);
+}
+
+.event-empty-state strong {
+    color: var(--text-primary, #f5f7fa);
+}
+
+.status-dot.success {
+    background: #22c55e;
+    box-shadow:
+        0 0 0 0.35rem rgba(34, 197, 94, 0.12);
+}
+
+.status-dot.warning {
+    background: #f59e0b;
+    box-shadow:
+        0 0 0 0.35rem rgba(245, 158, 11, 0.12);
+}
+
+.status-dot.error {
+    background: #ef4444;
+    box-shadow:
+        0 0 0 0.35rem rgba(239, 68, 68, 0.12);
+}
+
+.pill.error {
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.13);
+    border-color: rgba(239, 68, 68, 0.25);
+}
+
+@media (max-width: 1100px) {
+    .lpr-stream-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .stream-viewport {
+        min-height: 210px;
+    }
+
+    .lpr-metric-grid {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 460px) {
+    .lpr-metric-grid {
+        grid-template-columns: 1fr;
+    }
+}

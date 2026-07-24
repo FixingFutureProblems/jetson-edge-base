@@ -6,103 +6,682 @@
 <section class="hero">
     <div>
         <div class="hero-kicker">Anwendung</div>
+
         <h2>License Plate Recognition</h2>
 
         <p>
-            Dieses Modul wird das zentrale Cockpit für Kamera,
-            Fahrzeugerkennung, Kennzeichenerkennung, OCR und
-            Passage-Auswertung.
+            Live-Überwachung von Basler-Kamera,
+            Fahrzeugerkennung und LPR-Pipeline.
         </p>
     </div>
 
     <div class="hero-status">
-        <span class="status-dot large"></span>
+        <span
+            id="lpr-status-dot"
+            class="status-dot large"
+        ></span>
 
         <div>
-            <strong>Plugin registriert</strong>
-            <span>Die Anwendung ist in Edge Base eingebunden.</span>
+            <strong id="lpr-status-title">
+                LPR-Dienst wird geprüft
+            </strong>
+
+            <span id="lpr-status-description">
+                Edge Base verbindet sich mit dem internen LPR-Dienst.
+            </span>
         </div>
     </div>
 </section>
 
-<section class="card-grid">
+
+<section class="card-grid lpr-metric-grid">
     <article class="card metric-card">
-        <div class="card-label">Kamera</div>
-        <div class="metric-value">vorbereitet</div>
-        <div class="card-note">Basler RAW-Livebild folgt</div>
+        <div class="card-label">LPR-Dienst</div>
+
+        <div
+            id="metric-service"
+            class="metric-value"
+        >
+            …
+        </div>
+
+        <div class="card-note">
+            Interner Dienst
+        </div>
     </article>
 
-    <article class="card metric-card">
-        <div class="card-label">YOLO</div>
-        <div class="metric-value">vorbereitet</div>
-        <div class="card-note">Live-Overlay folgt</div>
-    </article>
 
     <article class="card metric-card">
-        <div class="card-label">OCR</div>
-        <div class="metric-value">geplant</div>
-        <div class="card-note">Asynchroner OCR-Worker</div>
+        <div class="card-label">Basler-Kamera</div>
+
+        <div
+            id="metric-camera"
+            class="metric-value"
+        >
+            …
+        </div>
+
+        <div class="card-note">
+            Kameraverbindung
+        </div>
     </article>
 
+
     <article class="card metric-card">
-        <div class="card-label">Passagen</div>
-        <div class="metric-value">geplant</div>
-        <div class="card-note">Erklärbare Passage-Zusammenführung</div>
+        <div class="card-label">Kamera-FPS</div>
+
+        <div
+            id="metric-camera-fps"
+            class="metric-value"
+        >
+            0,0
+        </div>
+
+        <div class="card-note">
+            Erfasste RAW-Frames
+        </div>
+    </article>
+
+
+    <article class="card metric-card">
+        <div class="card-label">YOLO-FPS</div>
+
+        <div
+            id="metric-yolo-fps"
+            class="metric-value"
+        >
+            0,0
+        </div>
+
+        <div class="card-note">
+            Verarbeitete Frames
+        </div>
+    </article>
+
+
+    <article class="card metric-card">
+        <div class="card-label">Detektionen</div>
+
+        <div
+            id="metric-detections"
+            class="metric-value"
+        >
+            0
+        </div>
+
+        <div class="card-note">
+            Im aktuellen YOLO-Frame
+        </div>
+    </article>
+
+
+    <article class="card metric-card">
+        <div class="card-label">Pipeline</div>
+
+        <div
+            id="metric-pipeline"
+            class="metric-value"
+        >
+            …
+        </div>
+
+        <div class="card-note">
+            Verarbeitung
+        </div>
     </article>
 </section>
 
-<section class="section-grid">
-    <article class="card">
+
+<section class="lpr-stream-grid">
+    <article class="card stream-card">
         <div class="card-header">
             <div>
-                <div class="card-label">Live-System</div>
-                <h3>Kamera und Erkennung</h3>
+                <div class="card-label">Basler-Kamera</div>
+                <h3>RAW-Livebild</h3>
             </div>
 
-            <span class="pill neutral">nächster Schritt</span>
+            <span
+                id="raw-stream-pill"
+                class="pill neutral"
+            >
+                wird geladen
+            </span>
         </div>
 
-        <div class="placeholder-panel">
-            <strong>Hier erscheint das Basler-Livebild.</strong>
+        <div class="stream-viewport">
+            <img
+                id="raw-stream-image"
+                class="stream-image"
+                src="{{ request.url_for('lpr_raw_stream') }}"
+                alt="RAW-Livebild der Basler-Kamera"
+            >
 
-            <span>
-                Danach ergänzen wir das YOLO-Overlay und die getrennten
-                Messwerte für Kamera-FPS und YOLO-FPS.
-            </span>
+            <div
+                id="raw-stream-placeholder"
+                class="stream-placeholder"
+            >
+                RAW-Stream wird verbunden …
+            </div>
         </div>
     </article>
 
+
+    <article class="card stream-card">
+        <div class="card-header">
+            <div>
+                <div class="card-label">Fahrzeugerkennung</div>
+                <h3>YOLO-Livebild</h3>
+            </div>
+
+            <span
+                id="yolo-stream-pill"
+                class="pill neutral"
+            >
+                wird geladen
+            </span>
+        </div>
+
+        <div class="stream-viewport">
+            <img
+                id="yolo-stream-image"
+                class="stream-image"
+                src="{{ request.url_for('lpr_yolo_stream') }}"
+                alt="YOLO-Livebild mit Fahrzeugmarkierungen"
+            >
+
+            <div
+                id="yolo-stream-placeholder"
+                class="stream-placeholder"
+            >
+                YOLO-Stream wird verbunden …
+            </div>
+        </div>
+    </article>
+</section>
+
+
+<section class="section-grid lpr-detail-grid">
     <article class="card">
         <div class="card-header">
             <div>
-                <div class="card-label">Plugin</div>
-                <h3>Modulinformationen</h3>
+                <div class="card-label">Pipeline</div>
+                <h3>Technischer Zustand</h3>
             </div>
 
-            <span class="pill success">aktiv</span>
+            <span
+                id="pipeline-pill"
+                class="pill neutral"
+            >
+                wird geprüft
+            </span>
         </div>
 
         <div class="definition-list">
             <div>
-                <dt>ID</dt>
-                <dd>{{ plugin.plugin_id }}</dd>
+                <dt>RAW-Frame-ID</dt>
+                <dd id="detail-raw-frame">0</dd>
             </div>
 
             <div>
-                <dt>Name</dt>
-                <dd>{{ plugin.name }}</dd>
+                <dt>YOLO-Frame-ID</dt>
+                <dd id="detail-yolo-frame">0</dd>
             </div>
 
             <div>
-                <dt>Route</dt>
-                <dd>{{ plugin.route }}</dd>
+                <dt>Status-Aktualisierung</dt>
+                <dd id="detail-status-time">—</dd>
             </div>
 
             <div>
-                <dt>Status</dt>
-                <dd>{{ plugin.status }}</dd>
+                <dt>Letzter Fehler</dt>
+                <dd
+                    id="detail-error"
+                    class="error-message"
+                >
+                    —
+                </dd>
+            </div>
+        </div>
+    </article>
+
+
+    <article class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-label">Erkennung</div>
+                <h3>Letzte LPR-Ereignisse</h3>
+            </div>
+
+            <span class="pill neutral">
+                vorbereitet
+            </span>
+        </div>
+
+        <div
+            id="lpr-event-list"
+            class="event-list"
+        >
+            <div class="event-empty-state">
+                <strong>Noch keine Ereignis-API verbunden.</strong>
+
+                <span>
+                    Hier erscheinen später OCR-Kandidaten,
+                    stabile Kennzeichen und abgeschlossene Passagen.
+                </span>
             </div>
         </div>
     </article>
 </section>
+
+
+<script>
+(() => {
+    const statusUrl = "{{ request.url_for('lpr_status') }}";
+
+    const elements = {
+        statusDot: document.getElementById("lpr-status-dot"),
+        statusTitle: document.getElementById("lpr-status-title"),
+        statusDescription: document.getElementById(
+            "lpr-status-description"
+        ),
+
+        service: document.getElementById("metric-service"),
+        camera: document.getElementById("metric-camera"),
+        cameraFps: document.getElementById("metric-camera-fps"),
+        yoloFps: document.getElementById("metric-yolo-fps"),
+        detections: document.getElementById("metric-detections"),
+        pipeline: document.getElementById("metric-pipeline"),
+
+        rawFrame: document.getElementById("detail-raw-frame"),
+        yoloFrame: document.getElementById("detail-yolo-frame"),
+        statusTime: document.getElementById("detail-status-time"),
+        error: document.getElementById("detail-error"),
+
+        pipelinePill: document.getElementById("pipeline-pill"),
+
+        rawImage: document.getElementById("raw-stream-image"),
+        rawPlaceholder: document.getElementById(
+            "raw-stream-placeholder"
+        ),
+        rawPill: document.getElementById("raw-stream-pill"),
+
+        yoloImage: document.getElementById("yolo-stream-image"),
+        yoloPlaceholder: document.getElementById(
+            "yolo-stream-placeholder"
+        ),
+        yoloPill: document.getElementById("yolo-stream-pill"),
+    };
+
+
+    function firstDefined(object, keys, fallback = null) {
+        for (const key of keys) {
+            if (
+                Object.prototype.hasOwnProperty.call(object, key)
+                && object[key] !== null
+                && object[key] !== undefined
+            ) {
+                return object[key];
+            }
+        }
+
+        return fallback;
+    }
+
+
+    function asBoolean(value) {
+        if (typeof value === "boolean") {
+            return value;
+        }
+
+        if (typeof value === "number") {
+            return value !== 0;
+        }
+
+        if (typeof value === "string") {
+            return [
+                "true",
+                "yes",
+                "on",
+                "running",
+                "connected",
+                "ok",
+                "active",
+            ].includes(value.toLowerCase());
+        }
+
+        return false;
+    }
+
+
+    function formatNumber(value, digits = 0) {
+        const number = Number(value);
+
+        if (!Number.isFinite(number)) {
+            return digits > 0 ? "0,0" : "0";
+        }
+
+        return number.toLocaleString(
+            "de-DE",
+            {
+                minimumFractionDigits: digits,
+                maximumFractionDigits: digits,
+            }
+        );
+    }
+
+
+    function setPill(element, state, text) {
+        element.className = `pill ${state}`;
+        element.textContent = text;
+    }
+
+
+    function setStatusDot(state) {
+        elements.statusDot.classList.remove(
+            "success",
+            "warning",
+            "error"
+        );
+
+        elements.statusDot.classList.add(state);
+    }
+
+
+    function normalizeStatus(payload) {
+        const serviceAvailable = asBoolean(
+            firstDefined(
+                payload,
+                ["service_available"],
+                true
+            )
+        );
+
+        const running = asBoolean(
+            firstDefined(
+                payload,
+                [
+                    "running",
+                    "pipeline_running",
+                    "is_running",
+                ],
+                false
+            )
+        );
+
+        const cameraConnected = asBoolean(
+            firstDefined(
+                payload,
+                [
+                    "camera_connected",
+                    "camera_open",
+                    "camera_available",
+                ],
+                false
+            )
+        );
+
+        return {
+            serviceAvailable,
+            running,
+            cameraConnected,
+
+            cameraFps: firstDefined(
+                payload,
+                [
+                    "camera_fps",
+                    "capture_fps",
+                    "raw_fps",
+                ],
+                0
+            ),
+
+            yoloFps: firstDefined(
+                payload,
+                [
+                    "yolo_fps",
+                    "inference_fps",
+                    "detection_fps",
+                ],
+                0
+            ),
+
+            detections: firstDefined(
+                payload,
+                [
+                    "detections",
+                    "detection_count",
+                    "vehicle_count",
+                ],
+                0
+            ),
+
+            rawFrameId: firstDefined(
+                payload,
+                [
+                    "raw_frame_id",
+                    "camera_frame_id",
+                    "capture_frame_id",
+                ],
+                0
+            ),
+
+            yoloFrameId: firstDefined(
+                payload,
+                [
+                    "yolo_frame_id",
+                    "detection_frame_id",
+                    "processed_frame_id",
+                ],
+                0
+            ),
+
+            lastError: firstDefined(
+                payload,
+                [
+                    "last_error",
+                    "error",
+                    "message",
+                ],
+                null
+            ),
+        };
+    }
+
+
+    function renderStatus(payload) {
+        const status = normalizeStatus(payload);
+
+        elements.service.textContent = status.serviceAvailable
+            ? "erreichbar"
+            : "offline";
+
+        elements.camera.textContent = status.cameraConnected
+            ? "verbunden"
+            : "getrennt";
+
+        elements.cameraFps.textContent = formatNumber(
+            status.cameraFps,
+            1
+        );
+
+        elements.yoloFps.textContent = formatNumber(
+            status.yoloFps,
+            1
+        );
+
+        elements.detections.textContent = formatNumber(
+            status.detections
+        );
+
+        elements.pipeline.textContent = status.running
+            ? "läuft"
+            : "gestoppt";
+
+        elements.rawFrame.textContent = formatNumber(
+            status.rawFrameId
+        );
+
+        elements.yoloFrame.textContent = formatNumber(
+            status.yoloFrameId
+        );
+
+        elements.statusTime.textContent =
+            new Date().toLocaleTimeString("de-DE");
+
+        elements.error.textContent = status.lastError || "—";
+
+        if (!status.serviceAvailable) {
+            setStatusDot("error");
+
+            elements.statusTitle.textContent =
+                "LPR-Dienst nicht erreichbar";
+
+            elements.statusDescription.textContent =
+                status.lastError
+                || "Der interne Dienst antwortet nicht.";
+
+            setPill(
+                elements.pipelinePill,
+                "error",
+                "offline"
+            );
+
+            return;
+        }
+
+        if (!status.cameraConnected) {
+            setStatusDot("warning");
+
+            elements.statusTitle.textContent =
+                "LPR-Dienst läuft";
+
+            elements.statusDescription.textContent =
+                status.lastError
+                || "Die Basler-Kamera ist nicht verbunden.";
+
+            setPill(
+                elements.pipelinePill,
+                "neutral",
+                status.running ? "läuft" : "gestoppt"
+            );
+
+            return;
+        }
+
+        if (!status.running) {
+            setStatusDot("warning");
+
+            elements.statusTitle.textContent =
+                "Kamera verbunden";
+
+            elements.statusDescription.textContent =
+                "Die Verarbeitungspipeline ist gestoppt.";
+
+            setPill(
+                elements.pipelinePill,
+                "neutral",
+                "gestoppt"
+            );
+
+            return;
+        }
+
+        setStatusDot("success");
+
+        elements.statusTitle.textContent =
+            "LPR-System aktiv";
+
+        elements.statusDescription.textContent =
+            "Kamera und Erkennungspipeline laufen.";
+
+        setPill(
+            elements.pipelinePill,
+            "success",
+            "läuft"
+        );
+    }
+
+
+    async function loadStatus() {
+        try {
+            const response = await fetch(
+                statusUrl,
+                {
+                    cache: "no-store",
+                    headers: {
+                        "Accept": "application/json",
+                    },
+                }
+            );
+
+            const payload = await response.json();
+
+            if (!response.ok) {
+                payload.service_available = false;
+            }
+
+            renderStatus(payload);
+        } catch (error) {
+            renderStatus({
+                service_available: false,
+                running: false,
+                camera_connected: false,
+                last_error: String(error),
+            });
+        }
+    }
+
+
+    function configureStream(
+        image,
+        placeholder,
+        pill
+    ) {
+        image.addEventListener("load", () => {
+            placeholder.hidden = true;
+            image.classList.add("is-visible");
+
+            setPill(
+                pill,
+                "success",
+                "live"
+            );
+        });
+
+        image.addEventListener("error", () => {
+            placeholder.hidden = false;
+            placeholder.textContent =
+                "Stream ist derzeit nicht verfügbar.";
+
+            image.classList.remove("is-visible");
+
+            setPill(
+                pill,
+                "error",
+                "offline"
+            );
+        });
+    }
+
+
+    configureStream(
+        elements.rawImage,
+        elements.rawPlaceholder,
+        elements.rawPill
+    );
+
+    configureStream(
+        elements.yoloImage,
+        elements.yoloPlaceholder,
+        elements.yoloPill
+    );
+
+    loadStatus();
+
+    window.setInterval(
+        loadStatus,
+        1000
+    );
+})();
+</script>
 {% endblock %}
