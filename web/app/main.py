@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from web.app.plugins.registry import get_enabled_plugins
+from web.app.routes.lpr import create_router as create_lpr_router
+
 
 APP_VERSION = "0.1.0-dev"
 
@@ -186,6 +189,14 @@ async def disable_browser_cache(request: Request, call_next):
     return response
 
 
+app.include_router(
+    create_lpr_router(
+        templates=templates,
+        status_builder=build_status,
+    )
+)
+
+
 @app.get("/")
 def index(request: Request):
     status = build_status()
@@ -200,6 +211,7 @@ def index(request: Request):
             "status": status,
             "request_id": uuid.uuid4().hex[:12],
             "request_number": next_request_number(),
+            "plugins": get_enabled_plugins(),
         },
     )
 

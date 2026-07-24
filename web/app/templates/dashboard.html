@@ -115,16 +115,22 @@
         </div>
 
         <div class="application-list">
-            <div class="application-item">
-                <div class="application-icon">LPR</div>
+            {% for plugin in plugins %}
+            <a class="application-item application-link" href="{{ plugin.route }}/">
+                <div class="application-icon">{{ plugin.short_name }}</div>
 
                 <div class="application-copy">
-                    <strong>License Plate Recognition</strong>
-                    <span>RAW- und YOLO-Liveansicht folgen als erstes Plugin.</span>
+                    <strong>{{ plugin.name }}</strong>
+                    <span>{{ plugin.description }}</span>
                 </div>
 
-                <span class="pill neutral">vorbereitet</span>
+                <span class="pill success">aktiv</span>
+            </a>
+            {% else %}
+            <div class="application-item">
+                Keine Anwendungen registriert.
             </div>
+            {% endfor %}
         </div>
     </article>
 </section>

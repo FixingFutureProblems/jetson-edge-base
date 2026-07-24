@@ -36,9 +36,12 @@
                 <div class="navigation-group">
                     <div class="navigation-label">Anwendungen</div>
 
-                    <a class="navigation-item disabled" href="#" aria-disabled="true">
+                    <a
+                        class="navigation-item {% if active_page == 'lpr' %}active{% endif %}"
+                        href="/applications/lpr/"
+                    >
                         LPR
-                        <span class="navigation-badge">bald</span>
+                        <span class="navigation-badge">aktiv</span>
                     </a>
                 </div>
 

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}LPR · Jetson Edge Base{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div>
+        <div class="hero-kicker">Anwendung</div>
+        <h2>License Plate Recognition</h2>
+
+        <p>
+            Dieses Modul wird das zentrale Cockpit für Kamera,
+            Fahrzeugerkennung, Kennzeichenerkennung, OCR und
+            Passage-Auswertung.
+        </p>
+    </div>
+
+    <div class="hero-status">
+        <span class="status-dot large"></span>
+
+        <div>
+            <strong>Plugin registriert</strong>
+            <span>Die Anwendung ist in Edge Base eingebunden.</span>
+        </div>
+    </div>
+</section>
+
+<section class="card-grid">
+    <article class="card metric-card">
+        <div class="card-label">Kamera</div>
+        <div class="metric-value">vorbereitet</div>
+        <div class="card-note">Basler RAW-Livebild folgt</div>
+    </article>
+
+    <article class="card metric-card">
+        <div class="card-label">YOLO</div>
+        <div class="metric-value">vorbereitet</div>
+        <div class="card-note">Live-Overlay folgt</div>
+    </article>
+
+    <article class="card metric-card">
+        <div class="card-label">OCR</div>
+        <div class="metric-value">geplant</div>
+        <div class="card-note">Asynchroner OCR-Worker</div>
+    </article>
+
+    <article class="card metric-card">
+        <div class="card-label">Passagen</div>
+        <div class="metric-value">geplant</div>
+        <div class="card-note">Erklärbare Passage-Zusammenführung</div>
+    </article>
+</section>
+
+<section class="section-grid">
+    <article class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-label">Live-System</div>
+                <h3>Kamera und Erkennung</h3>
+            </div>
+
+            <span class="pill neutral">nächster Schritt</span>
+        </div>
+
+        <div class="placeholder-panel">
+            <strong>Hier erscheint das Basler-Livebild.</strong>
+
+            <span>
+                Danach ergänzen wir das YOLO-Overlay und die getrennten
+                Messwerte für Kamera-FPS und YOLO-FPS.
+            </span>
+        </div>
+    </article>
+
+    <article class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-label">Plugin</div>
+                <h3>Modulinformationen</h3>
+            </div>
+
+            <span class="pill success">aktiv</span>
+        </div>
+
+        <div class="definition-list">
+            <div>
+                <dt>ID</dt>
+                <dd>{{ plugin.plugin_id }}</dd>
+            </div>
+
+            <div>
+                <dt>Name</dt>
+                <dd>{{ plugin.name }}</dd>
+            </div>
+
+            <div>
+                <dt>Route</dt>
+                <dd>{{ plugin.route }}</dd>
+            </div>
+
+            <div>
+                <dt>Status</dt>
+                <dd>{{ plugin.status }}</dd>
+            </div>
+        </div>
+    </article>
+</section>
+{% endblock %}
