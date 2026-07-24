@@ -1,27 +1,39 @@
 from __future__ import annotations
 
-import html
 import os
 import socket
 import subprocess
 import threading
-import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 
-APP_VERSION = "0.0.1-dev"
+APP_VERSION = "0.1.0-dev"
+
+APP_DIRECTORY = Path(__file__).resolve().parent
 BOOT_ID_PATH = Path("/proc/sys/kernel/random/boot_id")
 UPTIME_PATH = Path("/proc/uptime")
 
 app = FastAPI(
     title="Jetson Edge Base",
     version=APP_VERSION,
+)
+
+app.mount(
+    "/static",
+    StaticFiles(directory=APP_DIRECTORY / "static"),
+    name="static",
+)
+
+templates = Jinja2Templates(
+    directory=APP_DIRECTORY / "templates",
 )
 
 _request_counter = 0
@@ -150,7 +162,7 @@ def build_status() -> dict[str, Any]:
         "service": "jetson-edge-web",
         "version": APP_VERSION,
         "hostname": socket.gethostname(),
-        "generated_at": now.isoformat(timespec="milliseconds"),
+        "generated_at": now.isoformat(timespec="seconds"),
         "boot_id": read_text(BOOT_ID_PATH),
         "uptime_seconds": uptime_seconds,
         "uptime": format_duration(uptime_seconds),
@@ -174,186 +186,35 @@ async def disable_browser_cache(request: Request, call_next):
     return response
 
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> HTMLResponse:
+@app.get("/")
+def index(request: Request):
     status = build_status()
-    request_number = next_request_number()
-    request_id = uuid.uuid4().hex[:12]
 
-    connection_rows = "".join(
-        (
-            "<tr>"
-            f"<td>{html.escape(connection['name'])}</td>"
-            f"<td>{html.escape(connection['type'])}</td>"
-            f"<td>{html.escape(connection['device'])}</td>"
-            "</tr>"
-        )
-        for connection in status["active_connections"]
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={
+            "active_page": "dashboard",
+            "page_eyebrow": "Systemübersicht",
+            "page_title": "Dashboard",
+            "status": status,
+            "request_id": uuid.uuid4().hex[:12],
+            "request_number": next_request_number(),
+        },
     )
 
-    if not connection_rows:
-        connection_rows = (
-            '<tr><td colspan="3">Keine aktive Verbindung erkannt</td></tr>'
-        )
 
-    ip_addresses = ", ".join(status["ip_addresses"]) or "Keine IP-Adresse erkannt"
-
-    document = f"""<!doctype html>
-<html lang="de">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="5">
-    <title>Jetson Edge Base</title>
-    <style>
-        :root {{
-            color-scheme: light dark;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        }}
-
-        body {{
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 24px;
-            line-height: 1.5;
-        }}
-
-        h1 {{
-            margin-bottom: 4px;
-        }}
-
-        .status {{
-            font-size: 1.15rem;
-            font-weight: 700;
-        }}
-
-        .ok {{
-            color: #21a366;
-        }}
-
-        .card {{
-            border: 1px solid #7777;
-            border-radius: 12px;
-            padding: 18px;
-            margin-top: 18px;
-        }}
-
-        dl {{
-            display: grid;
-            grid-template-columns: minmax(160px, 220px) 1fr;
-            gap: 8px 16px;
-        }}
-
-        dt {{
-            font-weight: 700;
-        }}
-
-        dd {{
-            margin: 0;
-            overflow-wrap: anywhere;
-        }}
-
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-        }}
-
-        th, td {{
-            padding: 8px;
-            text-align: left;
-            border-bottom: 1px solid #7775;
-        }}
-
-        code {{
-            overflow-wrap: anywhere;
-        }}
-
-        .live {{
-            font-weight: 700;
-        }}
-    </style>
-</head>
-<body>
-    <h1>Jetson Edge Base</h1>
-    <div class="status ok">● Webserver läuft</div>
-
-    <section class="card">
-        <h2>Live-Diagnose</h2>
-        <dl>
-            <dt>Seite erzeugt</dt>
-            <dd class="live">{html.escape(status["generated_at"])}</dd>
-
-            <dt>Request-ID</dt>
-            <dd><code>{request_id}</code></dd>
-
-            <dt>Request-Zähler</dt>
-            <dd>{request_number}</dd>
-
-            <dt>Prozess-ID</dt>
-            <dd>{status["process_id"]}</dd>
-        </dl>
-        <p>Diese Seite wird alle fünf Sekunden neu vom Jetson geladen.</p>
-    </section>
-
-    <section class="card">
-        <h2>System</h2>
-        <dl>
-            <dt>Hostname</dt>
-            <dd>{html.escape(status["hostname"])}</dd>
-
-            <dt>Version</dt>
-            <dd>{html.escape(status["version"])}</dd>
-
-            <dt>Boot-ID</dt>
-            <dd><code>{html.escape(status["boot_id"])}</code></dd>
-
-            <dt>Laufzeit</dt>
-            <dd>{html.escape(status["uptime"])}</dd>
-        </dl>
-    </section>
-
-    <section class="card">
-        <h2>Netzwerk</h2>
-        <dl>
-            <dt>Netzwerkmodus</dt>
-            <dd>{html.escape(status["network_mode"])}</dd>
-
-            <dt>IP-Adressen</dt>
-            <dd>{html.escape(ip_addresses)}</dd>
-        </dl>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>Verbindung</th>
-                    <th>Typ</th>
-                    <th>Gerät</th>
-                </tr>
-            </thead>
-            <tbody>
-                {connection_rows}
-            </tbody>
-        </table>
-    </section>
-
-    <section class="card">
-        <h2>API</h2>
-        <p>
-            Maschinenlesbarer Status:
-            <a href="/api/status"><code>/api/status</code></a>
-        </p>
-    </section>
-</body>
-</html>
-"""
-
-    return HTMLResponse(document)
-
-
-@app.get("/api/status")
+@app.get("/api/status", response_class=JSONResponse)
 def api_status() -> JSONResponse:
-    status = build_status()
-    status["request_id"] = uuid.uuid4().hex
-    status["request_number"] = next_request_number()
+    return JSONResponse(build_status())
 
-    return JSONResponse(status)
+
+@app.get("/health", response_class=JSONResponse)
+def health() -> JSONResponse:
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "jetson-edge-web",
+            "version": APP_VERSION,
+        }
+    )

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>{% block title %}Jetson Edge Base{% endblock %}</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', path='css/app.css') }}"
+    >
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">JE</div>
+
+                <div>
+                    <div class="brand-title">Jetson Edge Base</div>
+                    <div class="brand-subtitle">Edge Appliance Platform</div>
+                </div>
+            </div>
+
+            <nav class="navigation" aria-label="Hauptnavigation">
+                <a
+                    class="navigation-item {% if active_page == 'dashboard' %}active{% endif %}"
+                    href="/"
+                >
+                    Dashboard
+                </a>
+
+                <div class="navigation-group">
+                    <div class="navigation-label">Anwendungen</div>
+
+                    <a class="navigation-item disabled" href="#" aria-disabled="true">
+                        LPR
+                        <span class="navigation-badge">bald</span>
+                    </a>
+                </div>
+
+                <div class="navigation-group">
+                    <div class="navigation-label">System</div>
+
+                    <a class="navigation-item disabled" href="#" aria-disabled="true">
+                        Hardware
+                    </a>
+
+                    <a class="navigation-item disabled" href="#" aria-disabled="true">
+                        Netzwerk
+                    </a>
+
+                    <a class="navigation-item disabled" href="#" aria-disabled="true">
+                        Logs
+                    </a>
+
+                    <a class="navigation-item disabled" href="#" aria-disabled="true">
+                        Updates
+                    </a>
+
+                    <a class="navigation-item disabled" href="#" aria-disabled="true">
+                        Einstellungen
+                    </a>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <span class="status-dot"></span>
+                Edge Base aktiv
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <header class="topbar">
+                <div>
+                    <div class="topbar-eyebrow">
+                        {{ page_eyebrow | default("Jetson Edge Base") }}
+                    </div>
+
+                    <h1 class="topbar-title">
+                        {{ page_title | default("Dashboard") }}
+                    </h1>
+                </div>
+
+                <div class="topbar-meta">
+                    <span>{{ status.hostname }}</span>
+                    <span class="topbar-separator">·</span>
+                    <span>Version {{ status.version }}</span>
+                </div>
+            </header>
+
+            <section class="content">
+                {% block content %}{% endblock %}
+            </section>
+
+            <footer class="footer">
+                <span>Jetson Edge Base</span>
+                <span>{{ status.generated_at }}</span>
+            </footer>
+        </main>
+    </div>
+</body>
+</html>

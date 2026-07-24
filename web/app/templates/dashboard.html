@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard · Jetson Edge Base{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div>
+        <div class="hero-kicker">Systemübersicht</div>
+        <h2>Die Edge-Appliance läuft.</h2>
+
+        <p>
+            Hardware, Netzwerk und Anwendungen werden künftig zentral
+            über diese Oberfläche verwaltet.
+        </p>
+    </div>
+
+    <div class="hero-status">
+        <span class="status-dot large"></span>
+
+        <div>
+            <strong>System online</strong>
+            <span>Webdienst und Dashboard erreichbar</span>
+        </div>
+    </div>
+</section>
+
+<section class="card-grid">
+    <article class="card metric-card">
+        <div class="card-label">Hostname</div>
+        <div class="metric-value">{{ status.hostname }}</div>
+        <div class="card-note">Identität dieser Appliance</div>
+    </article>
+
+    <article class="card metric-card">
+        <div class="card-label">Laufzeit</div>
+        <div class="metric-value">{{ status.uptime }}</div>
+        <div class="card-note">Seit dem letzten Systemstart</div>
+    </article>
+
+    <article class="card metric-card">
+        <div class="card-label">Netzwerkmodus</div>
+        <div class="metric-value">{{ status.network_mode }}</div>
+        <div class="card-note">Aktuell erkannte Hauptverbindung</div>
+    </article>
+
+    <article class="card metric-card">
+        <div class="card-label">Webprozess</div>
+        <div class="metric-value">{{ status.process_id }}</div>
+        <div class="card-note">Aktuelle Prozess-ID</div>
+    </article>
+</section>
+
+<section class="section-grid">
+    <article class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-label">Netzwerk</div>
+                <h3>Aktive Verbindungen</h3>
+            </div>
+
+            <span class="pill success">verbunden</span>
+        </div>
+
+        <div class="definition-list">
+            <div>
+                <dt>IP-Adressen</dt>
+                <dd>
+                    {% if status.ip_addresses %}
+                        {{ status.ip_addresses | join(", ") }}
+                    {% else %}
+                        Keine IP-Adresse erkannt
+                    {% endif %}
+                </dd>
+            </div>
+
+            <div>
+                <dt>Netzwerkmodus</dt>
+                <dd>{{ status.network_mode }}</dd>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Typ</th>
+                        <th>Gerät</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for connection in status.active_connections %}
+                    <tr>
+                        <td>{{ connection.name }}</td>
+                        <td>{{ connection.type }}</td>
+                        <td>{{ connection.device }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3">Keine aktive Verbindung erkannt</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-label">Plattform</div>
+                <h3>Anwendungen</h3>
+            </div>
+        </div>
+
+        <div class="application-list">
+            <div class="application-item">
+                <div class="application-icon">LPR</div>
+
+                <div class="application-copy">
+                    <strong>License Plate Recognition</strong>
+                    <span>RAW- und YOLO-Liveansicht folgen als erstes Plugin.</span>
+                </div>
+
+                <span class="pill neutral">vorbereitet</span>
+            </div>
+        </div>
+    </article>
+</section>
+
+<section class="card diagnostics-card">
+    <div class="card-header">
+        <div>
+            <div class="card-label">Diagnose</div>
+            <h3>Aktuelle Webinstanz</h3>
+        </div>
+
+        <span class="pill success">live</span>
+    </div>
+
+    <div class="diagnostics-grid">
+        <div>
+            <span>Request-ID</span>
+            <code>{{ request_id }}</code>
+        </div>
+
+        <div>
+            <span>Request-Zähler</span>
+            <strong>{{ request_number }}</strong>
+        </div>
+
+        <div>
+            <span>Boot-ID</span>
+            <code>{{ status.boot_id }}</code>
+        </div>
+
+        <div>
+            <span>Erzeugt</span>
+            <strong>{{ status.generated_at }}</strong>
+        </div>
+    </div>
+</section>
+{% endblock %}
