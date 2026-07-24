@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+CONFIG_FILE="/etc/jetson-edge/network.conf"
+
+log() {
+    logger -t jetson-network -- "$*"
+    printf '%s\n' "$*"
+}
+
+die() {
+    log "FEHLER: $*"
+    exit 1
+}
+
+load_config() {
+    [[ -r "$CONFIG_FILE" ]] || die "Konfiguration nicht gefunden: $CONFIG_FILE"
+
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+
+    : "${LAN_INTERFACE:?LAN_INTERFACE fehlt}"
+    : "${WIFI_INTERFACE:?WIFI_INTERFACE fehlt}"
+    : "${ACCESS_POINT_SUFFIX:?ACCESS_POINT_SUFFIX fehlt}"
+    : "${ACCESS_POINT_ADDRESS:?ACCESS_POINT_ADDRESS fehlt}"
+
+    LAN_ENABLED="${LAN_ENABLED:-yes}"
+    WIFI_CLIENT_ENABLED="${WIFI_CLIENT_ENABLED:-yes}"
+    ACCESS_POINT_ENABLED="${ACCESS_POINT_ENABLED:-yes}"
+    LAN_WAIT_SECONDS="${LAN_WAIT_SECONDS:-8}"
+    WIFI_WAIT_SECONDS="${WIFI_WAIT_SECONDS:-20}"
+
+    HOSTNAME_SHORT="$(hostnamectl --static)"
+    AP_CONNECTION="${HOSTNAME_SHORT}${ACCESS_POINT_SUFFIX}"
+    AP_SSID="$AP_CONNECTION"
+}
+
+require_root() {
+    [[ "${EUID}" -eq 0 ]] || die "Dieser Befehl benötigt root-Rechte. Verwende sudo."
+}
+
+connection_active() {
+    local connection_name="$1"
+
+    nmcli -t -f NAME connection show --active |
+        grep -Fxq "$connection_name"
+}
+
+device_state() {
+    local interface="$1"
+
+    nmcli -g GENERAL.STATE device show "$interface" 2>/dev/null |
+        cut -d' ' -f1
+}
+
+lan_carrier_present() {
+    local carrier_file="/sys/class/net/${LAN_INTERFACE}/carrier"
+
+    [[ -r "$carrier_file" ]] &&
+        [[ "$(cat "$carrier_file")" == "1" ]]
+}
+
+lan_connected() {
+    [[ "$(device_state "$LAN_INTERFACE")" == "100" ]]
+}
+
+wifi_connected_as_client() {
+    local active_connection
+
+    active_connection="$(
+        nmcli -t -f NAME,TYPE,DEVICE connection show --active |
+            awk -F: -v interface="$WIFI_INTERFACE" \
+                '$2 == "802-11-wireless" && $3 == interface { print $1; exit }'
+    )"
+
+    [[ -n "$active_connection" ]] &&
+        [[ "$active_connection" != "$AP_CONNECTION" ]]
+}
+
+active_wifi_connection() {
+    nmcli -t -f NAME,TYPE,DEVICE connection show --active |
+        awk -F: -v interface="$WIFI_INTERFACE" \
+            '$2 == "802-11-wireless" && $3 == interface { print $1; exit }'
+}
+
+stop_access_point() {
+    if connection_active "$AP_CONNECTION"; then
+        log "Access Point wird beendet: $AP_CONNECTION"
+        nmcli connection down "$AP_CONNECTION"
+    fi
+}
+
+start_access_point() {
+    [[ "$ACCESS_POINT_ENABLED" == "yes" ]] ||
+        die "Access Point ist deaktiviert."
+
+    nmcli connection show "$AP_CONNECTION" >/dev/null 2>&1 ||
+        die "Access-Point-Profil fehlt: $AP_CONNECTION"
+
+    local active_wifi
+    active_wifi="$(active_wifi_connection || true)"
+
+    if [[ -n "$active_wifi" && "$active_wifi" != "$AP_CONNECTION" ]]; then
+        log "WLAN-Client wird getrennt: $active_wifi"
+        nmcli connection down "$active_wifi" || true
+    fi
+
+    if ! connection_active "$AP_CONNECTION"; then
+        log "Access Point wird gestartet: $AP_CONNECTION"
+        nmcli connection up "$AP_CONNECTION"
+    fi
+}
+
+activate_lan() {
+    [[ "$LAN_ENABLED" == "yes" ]] || return 1
+
+    lan_carrier_present || return 1
+
+    log "LAN-Kabel erkannt."
+
+    nmcli device connect "$LAN_INTERFACE" >/dev/null 2>&1 || true
+    sleep "$LAN_WAIT_SECONDS"
+
+    if lan_connected; then
+        stop_access_point
+        log "Netzwerkmodus: LAN"
+        return 0
+    fi
+
+    log "LAN-Kabel erkannt, aber keine vollständige Verbindung hergestellt."
+    return 1
+}
+
+activate_known_wifi() {
+    [[ "$WIFI_CLIENT_ENABLED" == "yes" ]] || return 1
+
+    stop_access_point
+
+    log "Suche nach bekannten WLANs."
+    nmcli device wifi rescan ifname "$WIFI_INTERFACE" >/dev/null 2>&1 || true
+
+    nmcli device connect "$WIFI_INTERFACE" >/dev/null 2>&1 || true
+    sleep "$WIFI_WAIT_SECONDS"
+
+    if wifi_connected_as_client; then
+        log "Netzwerkmodus: WLAN-Client ($(active_wifi_connection))"
+        return 0
+    fi
+
+    log "Kein bekanntes WLAN konnte verbunden werden."
+    return 1
+}
+
+run_auto() {
+    require_root
+
+    if activate_lan; then
+        return 0
+    fi
+
+    if activate_known_wifi; then
+        return 0
+    fi
+
+    if [[ "$ACCESS_POINT_ENABLED" == "yes" ]]; then
+        start_access_point
+        log "Netzwerkmodus: Access Point ($AP_SSID)"
+        return 0
+    fi
+
+    die "Keine Netzwerkverbindung verfügbar und Access Point deaktiviert."
+}
+
+show_status() {
+    local active_wifi
+    local lan_carrier="nein"
+    local lan_status="getrennt"
+    local ap_status="inaktiv"
+    local mode="offline"
+
+    active_wifi="$(active_wifi_connection || true)"
+
+    if lan_carrier_present; then
+        lan_carrier="ja"
+    fi
+
+    if lan_connected; then
+        lan_status="verbunden"
+        mode="LAN"
+    elif [[ "$active_wifi" == "$AP_CONNECTION" ]]; then
+        ap_status="aktiv"
+        mode="Access Point"
+    elif [[ -n "$active_wifi" ]]; then
+        mode="WLAN-Client"
+    fi
+
+    cat <<STATUS
+Hostname:             $HOSTNAME_SHORT
+LAN-Schnittstelle:    $LAN_INTERFACE
+LAN-Kabel:            $lan_carrier
+LAN-Status:           $lan_status
+WLAN-Schnittstelle:   $WIFI_INTERFACE
+Aktives WLAN-Profil:  ${active_wifi:-keines}
+Access-Point-Profil:  $AP_CONNECTION
+Access-Point-SSID:    $AP_SSID
+Access-Point-Adresse: $ACCESS_POINT_ADDRESS
+Access-Point-Status:  $ap_status
+Aktueller Modus:      $mode
+STATUS
+}
+
+show_usage() {
+    cat <<'USAGE'
+Verwendung:
+  jetson-network status
+  jetson-network auto
+  jetson-network ap
+  jetson-network client
+USAGE
+}
+
+main() {
+    load_config
+
+    case "${1:-}" in
+        status)
+            show_status
+            ;;
+        auto)
+            run_auto
+            ;;
+        ap)
+            require_root
+            start_access_point
+            ;;
+        client)
+            require_root
+            activate_known_wifi ||
+                die "Kein bekanntes WLAN konnte verbunden werden."
+            ;;
+        *)
+            show_usage
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"
