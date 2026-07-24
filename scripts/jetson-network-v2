@@ -31,6 +31,22 @@ load_config() {
     LAN_WAIT_SECONDS="${LAN_WAIT_SECONDS:-8}"
     WIFI_WAIT_SECONDS="${WIFI_WAIT_SECONDS:-20}"
 
+    # Zustandsautomat
+    MONITOR_INTERVAL_SECONDS="${MONITOR_INTERVAL_SECONDS:-10}"
+    WIFI_RETRY_SECONDS="${WIFI_RETRY_SECONDS:-300}"
+
+    [[ "$MONITOR_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] ||
+        die "MONITOR_INTERVAL_SECONDS muss eine ganze Zahl sein."
+
+    [[ "$WIFI_RETRY_SECONDS" =~ ^[0-9]+$ ]] ||
+        die "WIFI_RETRY_SECONDS muss eine ganze Zahl sein."
+
+    ((MONITOR_INTERVAL_SECONDS > 0)) ||
+        die "MONITOR_INTERVAL_SECONDS muss größer als 0 sein."
+
+    ((WIFI_RETRY_SECONDS > 0)) ||
+        die "WIFI_RETRY_SECONDS muss größer als 0 sein."
+
     HOSTNAME_SHORT="$(hostnamectl --static)"
     AP_CONNECTION="${HOSTNAME_SHORT}${ACCESS_POINT_SUFFIX}"
     AP_SSID="$AP_CONNECTION"
@@ -170,6 +186,140 @@ run_auto() {
     fi
 
     die "Keine Netzwerkverbindung verfügbar und Access Point deaktiviert."
+}
+
+current_mode() {
+    local active_wifi
+
+    active_wifi="$(active_wifi_connection || true)"
+
+    if lan_connected; then
+        printf '%s\n' "LAN"
+    elif [[ "$active_wifi" == "$AP_CONNECTION" ]]; then
+        printf '%s\n' "ACCESS_POINT"
+    elif [[ -n "$active_wifi" ]]; then
+        printf '%s\n' "WIFI_CLIENT"
+    else
+        printf '%s\n' "OFFLINE"
+    fi
+}
+
+log_state_change() {
+    local previous_mode="$1"
+    local current_mode_name="$2"
+
+    [[ "$previous_mode" == "$current_mode_name" ]] && return 0
+
+    log "Zustandswechsel: ${previous_mode} -> ${current_mode_name}"
+}
+
+recover_without_lan() {
+    if activate_known_wifi; then
+        return 0
+    fi
+
+    if [[ "$ACCESS_POINT_ENABLED" == "yes" ]]; then
+        start_access_point
+        return 0
+    fi
+
+    log "Keine Netzwerkverbindung verfügbar; Access Point ist deaktiviert."
+    return 1
+}
+
+reconcile_network_state() {
+    local previous_mode
+    local resulting_mode
+    local now
+
+    previous_mode="$(current_mode)"
+
+    case "$previous_mode" in
+        LAN)
+            if ! lan_carrier_present; then
+                log "LAN-Verbindung ist weggefallen."
+                recover_without_lan || true
+            fi
+            ;;
+
+        WIFI_CLIENT)
+            if [[ "$LAN_ENABLED" == "yes" ]] && lan_carrier_present; then
+                log "LAN-Kabel erkannt; Wechsel von WLAN-Client zu LAN."
+                activate_lan || true
+            elif ! wifi_connected_as_client; then
+                log "WLAN-Client-Verbindung ist weggefallen."
+                recover_without_lan || true
+            fi
+            ;;
+
+        ACCESS_POINT)
+            if [[ "$LAN_ENABLED" == "yes" ]] && lan_carrier_present; then
+                log "LAN-Kabel erkannt; Wechsel vom Access Point zu LAN."
+                activate_lan || true
+            else
+                now="$(date +%s)"
+
+                if ((now - LAST_WIFI_RETRY_EPOCH >= WIFI_RETRY_SECONDS)); then
+                    LAST_WIFI_RETRY_EPOCH="$now"
+
+                    log "Erneuter Versuch, ein bekanntes WLAN zu verbinden."
+
+                    if ! activate_known_wifi; then
+                        log "Kein bekanntes WLAN verfügbar; Access Point wird wiederhergestellt."
+                        start_access_point
+                    fi
+                fi
+            fi
+            ;;
+
+        OFFLINE)
+            log "Kein aktiver Netzwerkmodus erkannt."
+
+            if ! activate_lan; then
+                recover_without_lan || true
+            fi
+            ;;
+
+        *)
+            log "Unbekannter Netzwerkzustand: $previous_mode"
+            ;;
+    esac
+
+    resulting_mode="$(current_mode)"
+    log_state_change "$previous_mode" "$resulting_mode"
+}
+
+run_monitor() {
+    require_root
+
+    LAST_WIFI_RETRY_EPOCH="$(date +%s)"
+
+    trap 'log "Netzwerkmonitor wird beendet."; exit 0' INT TERM
+
+    log "Netzwerkmonitor startet."
+    log "Prüfintervall: ${MONITOR_INTERVAL_SECONDS}s"
+    log "WLAN-Wiederholungsintervall im AP-Modus: ${WIFI_RETRY_SECONDS}s"
+
+    # Beim Start einmal die vollständige Prioritätsentscheidung durchführen:
+    #
+    # LAN -> bekanntes WLAN -> Access Point
+    local initial_mode
+    initial_mode="$(current_mode)"
+
+    if [[ "$initial_mode" == "OFFLINE" ]]; then
+        log "Beim Start ist keine Netzwerkverbindung aktiv."
+        run_auto
+        initial_mode="$(current_mode)"
+    else
+        log "Bestehende Netzwerkverbindung wird übernommen: $initial_mode"
+    fi
+
+    log "Initialer Netzwerkzustand: $initial_mode"
+
+    while true; do
+        sleep "$MONITOR_INTERVAL_SECONDS"
+        reconcile_network_state
+    done
 }
 
 show_status() {
@@ -484,8 +634,17 @@ Verwendung:
   jetson-network status
   jetson-network doctor
   jetson-network auto
+  jetson-network monitor
   jetson-network ap
   jetson-network client
+
+Befehle:
+  status   Aktuellen Netzwerkzustand anzeigen
+  doctor   Netzwerk und Systemdienste diagnostizieren
+  auto     Einmalig LAN, WLAN-Client oder Access Point auswählen
+  monitor  Netzwerkzustand dauerhaft überwachen und automatisch wechseln
+  ap       Access Point manuell aktivieren
+  client   Bekanntes WLAN manuell verbinden
 USAGE
 }
 
@@ -501,6 +660,9 @@ main() {
             ;;
         auto)
             run_auto
+            ;;
+        monitor)
+            run_monitor
             ;;
         ap)
             require_root
