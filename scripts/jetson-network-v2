@@ -1,0 +1,521 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+CONFIG_FILE="/etc/jetson-edge/network.conf"
+
+log() {
+    logger -t jetson-network -- "$*"
+    printf '%s\n' "$*"
+}
+
+die() {
+    log "FEHLER: $*"
+    exit 1
+}
+
+load_config() {
+    [[ -r "$CONFIG_FILE" ]] || die "Konfiguration nicht gefunden: $CONFIG_FILE"
+
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+
+    : "${LAN_INTERFACE:?LAN_INTERFACE fehlt}"
+    : "${WIFI_INTERFACE:?WIFI_INTERFACE fehlt}"
+    : "${ACCESS_POINT_SUFFIX:?ACCESS_POINT_SUFFIX fehlt}"
+    : "${ACCESS_POINT_ADDRESS:?ACCESS_POINT_ADDRESS fehlt}"
+
+    LAN_ENABLED="${LAN_ENABLED:-yes}"
+    WIFI_CLIENT_ENABLED="${WIFI_CLIENT_ENABLED:-yes}"
+    ACCESS_POINT_ENABLED="${ACCESS_POINT_ENABLED:-yes}"
+    LAN_WAIT_SECONDS="${LAN_WAIT_SECONDS:-8}"
+    WIFI_WAIT_SECONDS="${WIFI_WAIT_SECONDS:-20}"
+
+    HOSTNAME_SHORT="$(hostnamectl --static)"
+    AP_CONNECTION="${HOSTNAME_SHORT}${ACCESS_POINT_SUFFIX}"
+    AP_SSID="$AP_CONNECTION"
+}
+
+require_root() {
+    [[ "${EUID}" -eq 0 ]] || die "Dieser Befehl benötigt root-Rechte. Verwende sudo."
+}
+
+connection_active() {
+    local connection_name="$1"
+
+    nmcli -t -f NAME connection show --active |
+        grep -Fxq "$connection_name"
+}
+
+device_state() {
+    local interface="$1"
+
+    nmcli -g GENERAL.STATE device show "$interface" 2>/dev/null |
+        cut -d' ' -f1
+}
+
+lan_carrier_present() {
+    local carrier_file="/sys/class/net/${LAN_INTERFACE}/carrier"
+
+    [[ -r "$carrier_file" ]] &&
+        [[ "$(cat "$carrier_file")" == "1" ]]
+}
+
+lan_connected() {
+    [[ "$(device_state "$LAN_INTERFACE")" == "100" ]]
+}
+
+wifi_connected_as_client() {
+    local active_connection
+
+    active_connection="$(
+        nmcli -t -f NAME,TYPE,DEVICE connection show --active |
+            awk -F: -v interface="$WIFI_INTERFACE" \
+                '$2 == "802-11-wireless" && $3 == interface { print $1; exit }'
+    )"
+
+    [[ -n "$active_connection" ]] &&
+        [[ "$active_connection" != "$AP_CONNECTION" ]]
+}
+
+active_wifi_connection() {
+    nmcli -t -f NAME,TYPE,DEVICE connection show --active |
+        awk -F: -v interface="$WIFI_INTERFACE" \
+            '$2 == "802-11-wireless" && $3 == interface { print $1; exit }'
+}
+
+stop_access_point() {
+    if connection_active "$AP_CONNECTION"; then
+        log "Access Point wird beendet: $AP_CONNECTION"
+        nmcli connection down "$AP_CONNECTION"
+    fi
+}
+
+start_access_point() {
+    [[ "$ACCESS_POINT_ENABLED" == "yes" ]] ||
+        die "Access Point ist deaktiviert."
+
+    nmcli connection show "$AP_CONNECTION" >/dev/null 2>&1 ||
+        die "Access-Point-Profil fehlt: $AP_CONNECTION"
+
+    local active_wifi
+    active_wifi="$(active_wifi_connection || true)"
+
+    if [[ -n "$active_wifi" && "$active_wifi" != "$AP_CONNECTION" ]]; then
+        log "WLAN-Client wird getrennt: $active_wifi"
+        nmcli connection down "$active_wifi" || true
+    fi
+
+    if ! connection_active "$AP_CONNECTION"; then
+        log "Access Point wird gestartet: $AP_CONNECTION"
+        nmcli connection up "$AP_CONNECTION"
+    fi
+}
+
+activate_lan() {
+    [[ "$LAN_ENABLED" == "yes" ]] || return 1
+
+    lan_carrier_present || return 1
+
+    log "LAN-Kabel erkannt."
+
+    nmcli device connect "$LAN_INTERFACE" >/dev/null 2>&1 || true
+    sleep "$LAN_WAIT_SECONDS"
+
+    if lan_connected; then
+        stop_access_point
+        log "Netzwerkmodus: LAN"
+        return 0
+    fi
+
+    log "LAN-Kabel erkannt, aber keine vollständige Verbindung hergestellt."
+    return 1
+}
+
+activate_known_wifi() {
+    [[ "$WIFI_CLIENT_ENABLED" == "yes" ]] || return 1
+
+    stop_access_point
+
+    log "Suche nach bekannten WLANs."
+    nmcli device wifi rescan ifname "$WIFI_INTERFACE" >/dev/null 2>&1 || true
+
+    nmcli device connect "$WIFI_INTERFACE" >/dev/null 2>&1 || true
+    sleep "$WIFI_WAIT_SECONDS"
+
+    if wifi_connected_as_client; then
+        log "Netzwerkmodus: WLAN-Client ($(active_wifi_connection))"
+        return 0
+    fi
+
+    log "Kein bekanntes WLAN konnte verbunden werden."
+    return 1
+}
+
+run_auto() {
+    require_root
+
+    if activate_lan; then
+        return 0
+    fi
+
+    if activate_known_wifi; then
+        return 0
+    fi
+
+    if [[ "$ACCESS_POINT_ENABLED" == "yes" ]]; then
+        start_access_point
+        log "Netzwerkmodus: Access Point ($AP_SSID)"
+        return 0
+    fi
+
+    die "Keine Netzwerkverbindung verfügbar und Access Point deaktiviert."
+}
+
+show_status() {
+    local active_wifi
+    local lan_carrier="nein"
+    local lan_status="getrennt"
+    local ap_status="inaktiv"
+    local mode="offline"
+
+    active_wifi="$(active_wifi_connection || true)"
+
+    if lan_carrier_present; then
+        lan_carrier="ja"
+    fi
+
+    if lan_connected; then
+        lan_status="verbunden"
+        mode="LAN"
+    elif [[ "$active_wifi" == "$AP_CONNECTION" ]]; then
+        ap_status="aktiv"
+        mode="Access Point"
+    elif [[ -n "$active_wifi" ]]; then
+        mode="WLAN-Client"
+    fi
+
+    cat <<STATUS
+Hostname:             $HOSTNAME_SHORT
+LAN-Schnittstelle:    $LAN_INTERFACE
+LAN-Kabel:            $lan_carrier
+LAN-Status:           $lan_status
+WLAN-Schnittstelle:   $WIFI_INTERFACE
+Aktives WLAN-Profil:  ${active_wifi:-keines}
+Access-Point-Profil:  $AP_CONNECTION
+Access-Point-SSID:    $AP_SSID
+Access-Point-Adresse: $ACCESS_POINT_ADDRESS
+Access-Point-Status:  $ap_status
+Aktueller Modus:      $mode
+STATUS
+}
+
+doctor_ok() {
+    printf '  [OK]   %s\n' "$1"
+}
+
+doctor_warn() {
+    printf '  [WARN] %s\n' "$1"
+    DOCTOR_WARNINGS=$((DOCTOR_WARNINGS + 1))
+}
+
+doctor_fail() {
+    printf '  [FEHLER] %s\n' "$1"
+    DOCTOR_ERRORS=$((DOCTOR_ERRORS + 1))
+}
+
+doctor_info() {
+    printf '         %s\n' "$1"
+}
+
+show_doctor() {
+    local active_wifi=""
+    local wifi_ipv4=""
+    local lan_ipv4=""
+    local default_route=""
+    local ap_mode=""
+    local ap_ipv4_method=""
+    local ssh_service=""
+    local tailscale_state=""
+
+    DOCTOR_WARNINGS=0
+    DOCTOR_ERRORS=0
+
+    printf 'Jetson Network Doctor\n'
+    printf '%s
+
+' '====================='
+
+    printf 'System\n'
+    printf '%s
+' '------'
+
+    doctor_info "Hostname: $HOSTNAME_SHORT"
+    doctor_info "Konfiguration: $CONFIG_FILE"
+
+    if systemctl is-active --quiet NetworkManager; then
+        doctor_ok "NetworkManager läuft."
+    else
+        doctor_fail "NetworkManager läuft nicht."
+    fi
+
+    if command -v nmcli >/dev/null 2>&1; then
+        doctor_ok "nmcli ist verfügbar."
+    else
+        doctor_fail "nmcli ist nicht verfügbar."
+    fi
+
+    printf '\nSchnittstellen\n'
+    printf '%s\n' '--------------'
+
+    if [[ -d "/sys/class/net/$LAN_INTERFACE" ]]; then
+        doctor_ok "LAN-Schnittstelle vorhanden: $LAN_INTERFACE"
+
+        if lan_carrier_present; then
+            doctor_ok "LAN-Kabel erkannt."
+        else
+            doctor_info "LAN-Kabel nicht erkannt."
+        fi
+
+        lan_ipv4="$(
+            ip -4 -o address show dev "$LAN_INTERFACE" 2>/dev/null |
+                awk '{print $4; exit}'
+        )"
+
+        if [[ -n "$lan_ipv4" ]]; then
+            doctor_info "LAN-IPv4: $lan_ipv4"
+        else
+            doctor_info "LAN-IPv4: keine"
+        fi
+    else
+        doctor_fail "LAN-Schnittstelle fehlt: $LAN_INTERFACE"
+    fi
+
+    if [[ -d "/sys/class/net/$WIFI_INTERFACE" ]]; then
+        doctor_ok "WLAN-Schnittstelle vorhanden: $WIFI_INTERFACE"
+
+        wifi_ipv4="$(
+            ip -4 -o address show dev "$WIFI_INTERFACE" 2>/dev/null |
+                awk '{print $4; exit}'
+        )"
+
+        if [[ -n "$wifi_ipv4" ]]; then
+            doctor_info "WLAN-IPv4: $wifi_ipv4"
+        else
+            doctor_warn "WLAN-Schnittstelle hat keine IPv4-Adresse."
+        fi
+    else
+        doctor_fail "WLAN-Schnittstelle fehlt: $WIFI_INTERFACE"
+    fi
+
+    printf '\nAktive Verbindungen\n'
+    printf '%s\n' '-------------------'
+
+    nmcli -f NAME,TYPE,DEVICE connection show --active 2>/dev/null || true
+
+    active_wifi="$(active_wifi_connection || true)"
+
+    if [[ -z "$active_wifi" ]]; then
+        doctor_warn "Kein aktives WLAN-Profil."
+    elif [[ "$active_wifi" == "$AP_CONNECTION" ]]; then
+        doctor_ok "Access Point ist aktiv: $active_wifi"
+    else
+        doctor_ok "WLAN-Client ist aktiv: $active_wifi"
+    fi
+
+    printf '\nAccess Point\n'
+    printf '%s\n' '------------'
+
+    if nmcli connection show "$AP_CONNECTION" >/dev/null 2>&1; then
+        doctor_ok "Access-Point-Profil vorhanden: $AP_CONNECTION"
+
+        ap_mode="$(
+            nmcli -g 802-11-wireless.mode connection show "$AP_CONNECTION" \
+                2>/dev/null || true
+        )"
+
+        ap_ipv4_method="$(
+            nmcli -g ipv4.method connection show "$AP_CONNECTION" \
+                2>/dev/null || true
+        )"
+
+        if [[ "$ap_mode" == "ap" ]]; then
+            doctor_ok "WLAN-Modus des Profils ist 'ap'."
+        else
+            doctor_fail "WLAN-Modus des Profils ist '${ap_mode:-nicht gesetzt}', erwartet wird 'ap'."
+        fi
+
+        if [[ "$ap_ipv4_method" == "shared" ]]; then
+            doctor_ok "IPv4-Methode des AP ist 'shared'."
+        else
+            doctor_fail "IPv4-Methode des AP ist '${ap_ipv4_method:-nicht gesetzt}', erwartet wird 'shared'."
+        fi
+
+        doctor_info "Erwartete AP-Adresse: $ACCESS_POINT_ADDRESS"
+
+        if connection_active "$AP_CONNECTION"; then
+            if [[ "$wifi_ipv4" == "$ACCESS_POINT_ADDRESS" ]]; then
+                doctor_ok "AP besitzt die erwartete IPv4-Adresse."
+            else
+                doctor_fail "AP ist aktiv, aber WLAN-IPv4 ist '${wifi_ipv4:-keine}' statt '$ACCESS_POINT_ADDRESS'."
+            fi
+        else
+            doctor_info "Access Point ist derzeit nicht aktiv."
+        fi
+    else
+        doctor_fail "Access-Point-Profil fehlt: $AP_CONNECTION"
+    fi
+
+    printf '\nRouting\n'
+    printf '%s\n' '-------'
+
+    default_route="$(
+        ip -4 route show default 2>/dev/null |
+            head -n 1
+    )"
+
+    if [[ -n "$default_route" ]]; then
+        doctor_ok "IPv4-Standardroute vorhanden."
+        doctor_info "$default_route"
+    elif connection_active "$AP_CONNECTION"; then
+        doctor_info "Keine Standardroute; im reinen AP-Betrieb kann das zulässig sein."
+    else
+        doctor_warn "Keine IPv4-Standardroute vorhanden."
+    fi
+
+    printf '\nSSH\n'
+    printf '%s\n' '---'
+
+    if systemctl list-unit-files ssh.service >/dev/null 2>&1; then
+        ssh_service="ssh"
+    elif systemctl list-unit-files sshd.service >/dev/null 2>&1; then
+        ssh_service="sshd"
+    fi
+
+    if [[ -n "$ssh_service" ]]; then
+        if systemctl is-active --quiet "$ssh_service"; then
+            doctor_ok "SSH-Dienst läuft: $ssh_service.service"
+        else
+            doctor_fail "SSH-Dienst läuft nicht: $ssh_service.service"
+        fi
+    else
+        doctor_fail "Kein SSH-Systemdienst gefunden."
+    fi
+
+    if ss -H -lnt 2>/dev/null |
+        awk '{print $4}' |
+        grep -Eq '(^|:|\])22$'; then
+        doctor_ok "TCP-Port 22 lauscht."
+    else
+        doctor_fail "TCP-Port 22 lauscht nicht."
+    fi
+
+    printf '\nFirewall\n'
+    printf '%s\n' '--------'
+
+    if command -v ufw >/dev/null 2>&1; then
+        local ufw_status
+
+        ufw_status="$(ufw status 2>/dev/null | head -n 1 || true)"
+        doctor_info "${ufw_status:-UFW-Status konnte nicht gelesen werden.}"
+
+        if [[ "$ufw_status" == "Status: active" ]]; then
+            if ufw status 2>/dev/null |
+                grep -Eq '(^|[[:space:]])22(/tcp)?[[:space:]]+ALLOW'; then
+                doctor_ok "UFW erlaubt SSH auf Port 22."
+            else
+                doctor_warn "UFW ist aktiv; eine explizite Freigabe für Port 22 wurde nicht gefunden."
+            fi
+        else
+            doctor_info "UFW blockiert derzeit offenbar keinen Verkehr."
+        fi
+    else
+        doctor_info "UFW ist nicht installiert."
+    fi
+
+    printf '\nTailscale\n'
+    printf '%s\n' '---------'
+
+    if command -v tailscale >/dev/null 2>&1; then
+        if systemctl is-active --quiet tailscaled; then
+            doctor_ok "tailscaled läuft."
+        else
+            doctor_warn "tailscaled läuft nicht."
+        fi
+
+        tailscale_state="$(
+            tailscale status --json 2>/dev/null |
+                grep -o '"BackendState":"[^"]*"' |
+                head -n 1 |
+                cut -d'"' -f4 || true
+        )"
+
+        if [[ "$tailscale_state" == "Running" ]]; then
+            doctor_ok "Tailscale ist verbunden."
+        elif [[ -n "$tailscale_state" ]]; then
+            doctor_warn "Tailscale-Zustand: $tailscale_state"
+        else
+            doctor_warn "Tailscale-Zustand konnte nicht ermittelt werden."
+        fi
+    else
+        doctor_info "Tailscale ist nicht installiert."
+    fi
+
+    printf '\nErgebnis\n'
+    printf '%s\n' '--------'
+    printf 'Fehler:   %d\n' "$DOCTOR_ERRORS"
+    printf 'Warnungen: %d\n' "$DOCTOR_WARNINGS"
+
+    if ((DOCTOR_ERRORS > 0)); then
+        printf '\nGesamtstatus: FEHLER\n'
+        return 1
+    elif ((DOCTOR_WARNINGS > 0)); then
+        printf '\nGesamtstatus: WARNUNGEN\n'
+        return 0
+    else
+        printf '\nGesamtstatus: OK\n'
+        return 0
+    fi
+}
+
+show_usage() {
+    cat <<'USAGE'
+Verwendung:
+  jetson-network status
+  jetson-network doctor
+  jetson-network auto
+  jetson-network ap
+  jetson-network client
+USAGE
+}
+
+main() {
+    load_config
+
+    case "${1:-}" in
+        status)
+            show_status
+            ;;
+        doctor)
+            show_doctor
+            ;;
+        auto)
+            run_auto
+            ;;
+        ap)
+            require_root
+            start_access_point
+            ;;
+        client)
+            require_root
+            activate_known_wifi ||
+                die "Kein bekanntes WLAN konnte verbunden werden."
+            ;;
+        *)
+            show_usage
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"
