@@ -189,12 +189,17 @@ async def disable_browser_cache(request: Request, call_next):
     return response
 
 
-app.include_router(
-    create_lpr_router(
-        templates=templates,
-        status_builder=build_status,
-    )
+lpr_router = create_lpr_router(
+    templates=templates,
+    status_builder=build_status,
 )
+
+if not lpr_router.routes:
+    raise RuntimeError(
+        "Der LPR-Router enthält keine registrierten Routen"
+    )
+
+app.include_router(lpr_router)
 
 
 @app.get("/")
